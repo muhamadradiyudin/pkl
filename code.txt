@@ -1,0 +1,410 @@
+import pandas as pd
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from tkinter import ttk
+from datetime import datetime
+from PIL import Image, ImageTk
+
+# Fungsi untuk menghitung usia
+def calculate_age(birth_date):
+    today = datetime.today()
+    return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+
+# Fungsi untuk membaca data dari file Excel
+def load_excel_data(file_path):
+    file_extension = file_path.split('.')[-1]
+    if file_extension in ['xls', 'xlsx', 'xlsm', 'xlsb']:
+        data = pd.read_excel(file_path)
+    else:
+        raise ValueError("Format file tidak didukung.")
+    
+    # Ganti nilai kosong di kolom SERTIFIKASI dan INPASSING dengan "Belum"
+    data["SERTIFIKASI"].fillna("Belum", inplace=True)
+    if "INPASSING" not in data.columns:
+        data["INPASSING"] = "Belum"
+    else:
+        # Konversi nilai "Y" menjadi "Sudah" di kolom INPASSING
+        data["INPASSING"] = data["INPASSING"].replace({"Y": "Sudah", "N": "Belum"})
+        data["INPASSING"].fillna("Belum", inplace=True)
+
+    # Tambahkan kolom PENSIUN
+    if "TANGGAL LAHIR" in data.columns:
+        data["TANGGAL LAHIR"] = pd.to_datetime(data["TANGGAL LAHIR"], errors='coerce')
+        data["USIA"] = data["TANGGAL LAHIR"].apply(lambda x: calculate_age(x) if not pd.isnull(x) else None)
+        data["PENSIUN"] = data["USIA"].apply(lambda x: "Sudah" if x is not None and x >= 60 else "Belum")
+    else:
+        data["PENSIUN"] = "Data Tanggal Lahir Tidak Ada"
+
+    return data
+
+# Fungsi untuk menampilkan data di Treeview dan mengatur lebar kolom
+def display_data(data):
+    tree.delete(*tree.get_children())  # Menghapus data yang ada di treeview
+    
+    # Menambahkan kolom ke treeview
+    tree["columns"] = list(data.columns)
+    tree["show"] = "headings"
+    
+    for col in data.columns:
+        tree.heading(col, text=col)
+        # Mengatur lebar kolom sesuai dengan isi terpanjang, minimal 70 pixel
+        max_len = max(data[col].astype(str).apply(len).max(), len(col)) + 20
+        tree.column(col, width=max_len, minwidth=200, anchor='center')
+    
+    # Menambahkan data ke treeview
+    for _, row in data.iterrows():
+        tree.insert("", "end", values=list(row))
+    
+    # Hitung jumlah PNS, NON PNS, dan PPPK
+    count_pns = len(data[data["STATUS PEGAWAI"] == "PNS"])
+    count_non_pns = len(data[data["STATUS PEGAWAI"] == "NON PNS"])
+    count_pppk = len(data[data["STATUS PEGAWAI"] == "PPPK"])
+    
+    # Update info_label untuk menampilkan jumlah PNS, NON PNS, dan PPPK
+    info_label.config(text=f"Jumlah PNS: {count_pns}, Jumlah NON PNS: {count_non_pns}, Jumlah PPPK: {count_pppk}")
+
+    refresh_data()
+
+# Fungsi untuk menyaring data berdasarkan jenjang sekolah, sertifikasi, status pegawai, inpassing, jenis_kelamin, dan pensiun
+def filter_data(event=None):
+    jenjang = jenjang_var.get()
+    sertifikasi = sertifikasi_var.get()
+    status_pegawai = status_var.get()
+    inpassing = inpassing_var.get()
+    jenis_kelamin = jenisKelamin_var.get()
+    pensiun = pensiun_var.get()
+    
+    filtered_data = data.copy()
+
+    if jenjang != "Semua":
+        filtered_data = filtered_data[filtered_data["JENJANG SEKOLAH"] == jenjang]
+    if sertifikasi != "Semua":
+        filtered_data = filtered_data[filtered_data["SERTIFIKASI"] == sertifikasi]
+    if status_pegawai != "Semua":
+        filtered_data = filtered_data[filtered_data["STATUS PEGAWAI"] == status_pegawai]
+    if inpassing != "Semua":
+        filtered_data = filtered_data[filtered_data["INPASSING"] == inpassing]
+    if jenis_kelamin != "Semua":
+        filtered_data = filtered_data[filtered_data["JENIS KELAMIN"] == jenis_kelamin]
+    if pensiun != "Semua":
+        filtered_data = filtered_data[filtered_data["PENSIUN"] == pensiun]
+    
+    search_keyword = search_var.get().lower()
+    if search_keyword:
+        filtered_data = filtered_data[
+            filtered_data.apply(lambda row: search_keyword in row.astype(str).str.lower().to_string(), axis=1)
+        ]
+    
+    display_data(filtered_data)
+
+# Fungsi untuk menyimpan data ke file Excel
+def save_to_excel():
+    file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
+    if file_path:
+        try:
+            # Mengambil data yang ditampilkan di Treeview
+            data_to_export = []
+            for item in tree.get_children():
+                values = tree.item(item, "values")
+                data_to_export.append(values)
+            
+            # Membuat DataFrame dari data yang akan diekspor
+            df_to_export = pd.DataFrame(data_to_export, columns=data.columns)
+            
+            # Menyimpan ke file Excel
+            df_to_export.to_excel(file_path, index=False)
+            messagebox.showinfo("Info", "Data berhasil disimpan ke file Excel.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error saat menyimpan data: {str(e)}")
+
+# Fungsi untuk membuka dialog file dan memuat data
+def load_file():
+    global data
+    file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xls *.xlsx *.xlsm *.xlsb")])
+    if file_path:
+        try:
+            data = load_excel_data(file_path)
+            display_data(data)
+        except Exception as e:
+            messagebox.showerror("Error", f"Error saat memuat data: {str(e)}")
+
+# Fungsi untuk menyembunyikan kolom dan menyimpan lebar asli kolom
+def hide_column(column):
+    original_widths[column] = tree.column(column, option='width')  # Simpan lebar asli kolom
+    tree.column(column, width=0, stretch=tk.NO)
+
+# Fungsi untuk menampilkan kolom dan mengatur lebar kolom
+def show_column(column):
+    if column in original_widths:
+        tree.column(column, width=original_widths[column], minwidth=200, anchor='center')
+    else:
+        tree.column(column, width=100, minwidth=200, anchor='center')
+
+# Fungsi untuk menampilkan dialog Show Columns
+def show_columns():
+    def on_apply():
+        selected_columns = [col for col, var in check_vars.items() if var.get()]
+
+        # Menyembunyikan semua kolom terlebih dahulu
+        for col in data.columns:
+            hide_column(col)
+
+        # Menampilkan kolom yang dipilih
+        for col in selected_columns:
+            show_column(col)
+
+        show_columns_dialog.destroy()
+
+    show_columns_dialog = tk.Toplevel(root)
+    show_columns_dialog.title("Show Columns")
+
+    tk.Label(show_columns_dialog, text="Select columns to show:").pack(pady=5)
+
+    check_vars = {}
+    columns_frame = tk.Frame(show_columns_dialog)
+    columns_frame.pack(fill='both', expand=True)
+
+    columns_canvas = tk.Canvas(columns_frame)
+    columns_canvas.pack(side='left', fill='both', expand=True)
+
+    scrollbar = ttk.Scrollbar(columns_frame, orient='vertical', command=columns_canvas.yview)
+    scrollbar.pack(side='right', fill='y')
+
+    columns_canvas.configure(yscrollcommand=scrollbar.set)
+    columns_canvas.bind('<Configure>', lambda e: columns_canvas.configure(scrollregion=columns_canvas.bbox('all')))
+
+    columns_inner_frame = tk.Frame(columns_canvas)
+    columns_canvas.create_window((0, 0), window=columns_inner_frame, anchor='nw')
+
+    # Menyiapkan checkbox untuk kolom
+    for col in data.columns:
+        var = tk.BooleanVar(value=tree.column(col, option='width') > 0)
+        check_vars[col] = var
+        checkbutton = tk.Checkbutton(columns_inner_frame, text=col, variable=var)
+        checkbutton.pack(anchor='w')
+
+    apply_button = ttk.Button(show_columns_dialog, text="Apply", command=on_apply)
+    apply_button.pack(pady=5)
+
+    # Menyimpan data check_vars dan show_columns_dialog agar tidak dihapus oleh garbage collector
+    show_columns_dialog.check_vars = check_vars
+    show_columns_dialog.apply_button = apply_button
+
+# Fungsi untuk menyegarkan data dan memperbarui tampilan kolom
+def refresh_data():
+    # Menyegarkan data yang ditampilkan di treeview berdasarkan kolom yang dipilih
+    display_data(data)
+    for col in data.columns:
+        if tree.column(col, option='width') == 0:
+            hide_column(col)
+        else:
+            show_column(col)
+
+
+# Inisialisasi tkinter
+root = tk.Tk()
+root.title("GPAIDIA")
+
+# Inisialisasi dictionary untuk menyimpan lebar asli kolom
+original_widths = {}
+
+# Tambahkan gaya ttk.Style
+style = ttk.Style(root)
+style.theme_use("clam")  
+style.configure("TButton", font=("Arial", 10), padding=10)
+style.configure("TLabel", font=("Arial", 10))
+style.configure("TCombobox", font=("Arial", 10))
+style.configure("Treeview.Heading", font=("Arial", 10, "bold"), foreground="black")
+style.configure("Treeview", font=("Arial", 10), rowheight=25)
+
+# Membuat frame untuk judul aplikasi
+title_frame = tk.Frame(root, bg="#007B43", padx=10, pady=10)
+title_frame.pack(fill=tk.X)
+
+# Menambahkan logo pada frame judul aplikasi
+logo_image = Image.open("D:/Semester 6/PKL/cobacoba/kemenag.png")  # Ganti dengan path logo
+logo_image = logo_image.resize((100, 100), Image.LANCZOS)  # Menggunakan Image.LANCZOS
+logo_photo = ImageTk.PhotoImage(logo_image)
+logo_label = tk.Label(title_frame, image=logo_photo, bg="#007B43")
+logo_label.pack(side=tk.LEFT, padx=10)
+
+# Menambahkan label judul aplikasi pada frame judul aplikasi
+title_label = tk.Label(title_frame, text="APLIKASI MANAJEMEN GPAIDIA", font=("Arial", 18, "bold"), bg="#007B43", fg="white")
+title_label.pack(side=tk.LEFT)
+
+# Membuat frame untuk elemen filter
+filter_frame = tk.Frame(root, padx=10, pady=10)
+filter_frame.pack(fill=tk.X)
+
+# Menambahkan dropdown filter untuk Jenjang Sekolah
+tk.Label(filter_frame, text="Jenjang Sekolah:").pack(side=tk.LEFT, padx=5)
+jenjang_var = tk.StringVar()
+jenjang_combobox = ttk.Combobox(filter_frame, textvariable=jenjang_var, state="readonly")
+jenjang_combobox["values"] = ["Semua", "SD", "SMP", "SMA", "SMK"]
+jenjang_combobox.current(0)
+jenjang_combobox.pack(side=tk.LEFT, padx=5)
+jenjang_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+# Menambahkan dropdown filter untuk Sertifikasi
+tk.Label(filter_frame, text="Sertifikasi:").pack(side=tk.LEFT, padx=5)
+sertifikasi_var = tk.StringVar()
+sertifikasi_combobox = ttk.Combobox(filter_frame, textvariable=sertifikasi_var, state="readonly")
+sertifikasi_combobox["values"] = ["Semua", "Sudah", "Belum"]
+sertifikasi_combobox.current(0)
+sertifikasi_combobox.pack(side=tk.LEFT, padx=5)
+sertifikasi_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+# Menambahkan dropdown filter untuk Status Pegawai
+tk.Label(filter_frame, text="Status Pegawai:").pack(side=tk.LEFT, padx=5)
+status_var = tk.StringVar()
+status_combobox = ttk.Combobox(filter_frame, textvariable=status_var, state="readonly")
+status_combobox["values"] = ["Semua", "PNS", "NON PNS", "PPPK"]
+status_combobox.current(0)
+status_combobox.pack(side=tk.LEFT, padx=5)
+status_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+# Menambahkan dropdown filter untuk Inpassing
+tk.Label(filter_frame, text="Inpassing:").pack(side=tk.LEFT, padx=5)
+inpassing_var = tk.StringVar()
+inpassing_combobox = ttk.Combobox(filter_frame, textvariable=inpassing_var, state="readonly")
+inpassing_combobox["values"] = ["Semua", "Sudah", "Belum"]
+inpassing_combobox.current(0)
+inpassing_combobox.pack(side=tk.LEFT, padx=5)
+inpassing_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+# Menambahkan dropdown filter untuk Jenis Kelamin
+tk.Label(filter_frame, text="Jenis Kelamin:").pack(side=tk.LEFT, padx=5)
+jenisKelamin_var = tk.StringVar()
+jenisKelamin_combobox = ttk.Combobox(filter_frame, textvariable=jenisKelamin_var, state="readonly")
+jenisKelamin_combobox["values"] = ["Semua", "L", "P"]
+jenisKelamin_combobox.current(0)
+jenisKelamin_combobox.pack(side=tk.LEFT, padx=5)
+jenisKelamin_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+# Menambahkan dropdown filter untuk Pensiun
+tk.Label(filter_frame, text="Pensiun:").pack(side=tk.LEFT, padx=5)
+pensiun_var = tk.StringVar()
+pensiun_combobox = ttk.Combobox(filter_frame, textvariable=pensiun_var, state="readonly")
+pensiun_combobox["values"] = ["Semua", "Sudah", "Belum"]
+pensiun_combobox.current(0)
+pensiun_combobox.pack(side=tk.LEFT, padx=5)
+pensiun_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+# Menambahkan input pencarian
+tk.Label(filter_frame, text="Pencarian:").pack(side=tk.LEFT, padx=5)
+search_var = tk.StringVar()
+search_entry = tk.Entry(filter_frame, textvariable=search_var)
+search_entry.pack(side=tk.LEFT, padx=5)
+search_entry.bind("<KeyRelease>", filter_data)
+
+# Membuat frame untuk tombol
+button_frame = tk.Frame(root, padx=10, pady=10)
+button_frame.pack(fill=tk.X)
+
+# Menambahkan tombol "Load File"
+load_button = ttk.Button(button_frame, text="Load File", command=load_file)
+load_button.pack(side=tk.LEFT, padx=5)
+
+# Menambahkan tombol "Save to Excel"
+save_button = ttk.Button(button_frame, text="Save to Excel", command=save_to_excel)
+save_button.pack(side=tk.LEFT, padx=5)
+
+# Menambahkan tombol "Refresh"
+refresh_button = ttk.Button(button_frame, text="Refresh", command=refresh_data)
+refresh_button.pack(side=tk.LEFT, padx=5)
+
+# Menambahkan tombol "Show Columns"
+show_columns_button = ttk.Button(button_frame, text="Show Columns", command=show_columns)
+show_columns_button.pack(side=tk.LEFT, padx=5)
+
+# Menambahkan input pencarian
+tk.Label(button_frame, text="Pencarian:").pack(side=tk.LEFT, padx=5)
+search_var = tk.StringVar()
+search_entry = tk.Entry(button_frame, textvariable=search_var)
+search_entry.pack(side=tk.LEFT, padx=5)
+search_entry.bind("<KeyRelease>", filter_data)
+
+# Fungsi filter_data akan menangani logika pencarian
+search_var.trace_add('write', filter_data)
+
+# Membuat Treeview untuk menampilkan data
+tree_frame = tk.Frame(root)
+tree_frame.pack(fill=tk.BOTH, expand=True)
+
+tree = ttk.Treeview(tree_frame, show='headings')
+tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+# Menambahkan scrollbar vertikal ke Treeview
+scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+tree.configure(yscrollcommand=scrollbar_y.set)
+
+# Menambahkan scrollbar horizontal ke Treeview
+scrollbar_x = ttk.Scrollbar(root, orient="horizontal", command=tree.xview)
+scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+tree.configure(xscrollcommand=scrollbar_x.set)
+
+# Membuat label informasi jumlah data
+info_label = ttk.Label(root, text="Jumlah PNS: 0, Jumlah NON PNS: 0, Jumlah PPPK: 0", font=("Arial", 12))
+info_label.pack(pady=10)
+
+# Membuat frame untuk elemen hak cipta dan tombol Desk
+footer_frame = tk.Frame(root, padx=10, pady=10)
+footer_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+# Menambahkan label hak cipta
+copyright_label = ttk.Label(footer_frame, text="© UINMA 2024 GPAIDIA. All rights reserved.", font=("Arial", 10))
+copyright_label.pack(side=tk.LEFT)
+
+# Fungsi untuk menampilkan pesan tentang Desk
+def show_desk_info():
+    messagebox.showinfo(
+        "Panduan Aplikasi Manajemen GPAIDIA",
+        """Aplikasi ini dirancang untuk memudahkan pengelolaan data GPAIDIA dengan fitur-fitur berikut:
+
+        Pemrosesan Usia dan Status Pensiun:
+        - Menghitung usia berdasarkan tanggal lahir dan menentukan status pensiun pegawai.
+
+        Pembacaan Data dari Excel:
+        - Memuat data dari file Excel dengan berbagai format (xls, xlsx, dll.).
+        - Mengganti nilai kosong di kolom "SERTIFIKASI" dan "INPASSING" dengan "Belum" atau "Sudah".
+
+        Penampilan Data:
+        - Menampilkan data dalam bentuk tabel dengan lebar kolom yang disesuaikan.
+        - Menyaring data berdasarkan jenjang sekolah, sertifikasi, status pegawai, inpassing, jenis kelamin, dan status pensiun.
+
+        Pencarian Data:
+        - Fitur pencarian yang memungkinkan pengguna mencari data berdasarkan kata kunci. Hasil pencarian akan menampilkan data yang sesuai dengan kata kunci yang dimasukkan, dengan penunjuk (pointer) di tabel data yang terarah pada kata yang cocok.
+
+        Ekspor Data:
+        - Menyimpan data yang ditampilkan ke file Excel.
+
+        Penyaringan Kolom:
+        - Memilih kolom yang ingin ditampilkan atau disembunyikan (fitur ini masih dalam pengembangan).
+
+        Catatan:
+        - Fitur pemilihan kolom untuk ditampilkan atau disembunyikan (Show Columns) masih memerlukan perbaikan lebih lanjut agar berfungsi sepenuhnya.
+
+        Pengembangan dan Kontak:
+        - Aplikasi ini dikembangkan oleh Tim PKL UIN Malang yang terdiri dari:
+            - Siti Rofidatus Saidah
+            - Mutiara Aprillia Dzakiroh
+            - Nurjihan Nabilah Ramadhani
+            - An Nisa’ Puja Karimah Attamimi
+        - Periode PKL: 24 Juni - 26 Juli 2024
+
+        Untuk informasi lebih lanjut, hubungi:
+        - CP: 082140717475 atau 085336520371
+        """
+    )
+
+# Menampilkan panduan aplikasi
+show_desk_info()
+
+
+# Menambahkan tombol "Desk"
+desk_button = ttk.Button(footer_frame, text="Desk", command=show_desk_info)
+desk_button.pack(side=tk.RIGHT)
+
+# Menjalankan aplikasi
+root.mainloop()

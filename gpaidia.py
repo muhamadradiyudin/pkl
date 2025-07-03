@@ -4,6 +4,11 @@ import threading
 from tkinter import filedialog, messagebox, scrolledtext
 from tkinter import ttk
 from datetime import datetime
+from tkinter import ttk
+import tkinter as tk
+from tkinter import PhotoImage
+from PIL import Image, ImageTk
+
 # from PIL import Image, ImageTk
 
 # Fungsi untuk menghitung usia
@@ -41,6 +46,8 @@ def load_excel_data(file_path):
 # Fungsi untuk menampilkan data di Treeview dan mengatur lebar kolom
 def display_data(data, refresh_needed=True):
     tree.delete(*tree.get_children())  # Menghapus data yang ada di treeview
+    tree.bind("<<TreeviewSelect>>", on_row_selected)
+
 
     # Menambahkan kolom ke treeview
     tree["columns"] = list(data.columns)
@@ -61,9 +68,51 @@ def display_data(data, refresh_needed=True):
     count_pppk = len(data[data["STATUS PEGAWAI"] == "PPPK"])
     
     # Update info_label untuk menampilkan jumlah PNS, NON PNS, dan PPPK
-    info_label.config(text=f"Jumlah PNS: {count_pns}, Jumlah NON PNS: {count_non_pns}, Jumlah PPPK: {count_pppk}")
+    label_pns.config(text=f"{count_pns}")
+    label_nonpns.config(text=f"{count_non_pns}")
+    label_pppk.config(text=f"{count_pppk}")
+    
+def on_row_selected(event):
+    selected_item = tree.focus()
+    if not selected_item:
+        return
+    values = tree.item(selected_item, "values")
+    
+    if not values:
+        return
 
+    columns = tree["columns"]
+    data_lines = [f"{col}: {val}" for col, val in zip(columns, values)]
 
+    # Membuat popup window baru
+    popup = tk.Toplevel(root)
+    popup.title("Detail Data")
+    popup.geometry("400x400")
+
+    # Search Entry
+    search_label = tk.Label(popup, text="Cari Kata Kunci:")
+    search_label.pack(pady=(10, 0))
+    search_var = tk.StringVar()
+    search_entry = tk.Entry(popup, textvariable=search_var)
+    search_entry.pack(fill='x', padx=10)
+
+    # Text area untuk menampilkan hasil
+    text_area = tk.Text(popup, wrap=tk.WORD)
+    text_area.pack(expand=True, fill='both', padx=10, pady=10)
+
+    # Fungsi untuk filter teks berdasarkan input
+    def update_text(*args):
+        keyword = search_var.get().lower()
+        text_area.delete("1.0", tk.END)
+        for line in data_lines:
+            if keyword in line.lower():
+                text_area.insert(tk.END, line + "\n")
+
+    # Bind perubahan teks untuk pencarian
+    search_var.trace_add("write", update_text)
+
+    # Tampilkan semua data awal
+    update_text()
 
 # Variabel global untuk menyimpan ID timer
 debounce_id = None
@@ -126,7 +175,6 @@ def highlight_search_result(keyword):
     
     # Konfigurasi tag highlight
     tree.tag_configure("highlight", background="yellow", foreground="red")
-
 
 # Fungsi untuk menyimpan data ke file Excel
 def save_to_excel():
@@ -240,164 +288,21 @@ def refresh_data():
     # Reset filter data
     filter_data()
 
-# Fungsi untuk memuat data secara asynchronous
-def load_data_async():
-    threading.Thread(target=load_data).start()
-
-# Fungsi untuk memproses data (dummy function)
-def load_data():
-    # Misalnya proses loading data yang berat
-    print("Memuat data...")
-
-# Inisialisasi tkinter
-root = tk.Tk()
-root.title("GPAIDIA")
-
-# Inisialisasi dictionary untuk menyimpan lebar asli kolom
-original_widths = {}
-
-# Tambahkan gaya ttk.Style
-style = ttk.Style(root)
-style.theme_use("clam")  
-style.configure("TButton", font=("Arial", 10), padding=10)
-style.configure("TLabel", font=("Arial", 10))
-style.configure("TCombobox", font=("Arial", 10))
-style.configure("Treeview.Heading", font=("Arial", 10, "bold"), foreground="black")
-style.configure("Treeview", font=("Arial", 10), rowheight=25)
-
-# Membuat frame untuk judul aplikasi
-title_frame = tk.Frame(root, bg="#007B43", padx=10, pady=10)
-title_frame.pack(fill=tk.X)
-
-# # Menambahkan logo pada frame judul aplikasi
-# logo_image_path = "images/kemenag.png"  # Jalur relatif gambar
-# try:
-#     logo_image = Image.open(logo_image_path)  # Membuka gambar dari jalur relatif
-#     logo_image = logo_image.resize((100, 100), Image.LANCZOS)  # Menggunakan Image.LANCZOS untuk memperbesar gambar
-#     logo_photo = ImageTk.PhotoImage(logo_image)
-#     logo_label = tk.Label(title_frame, image=logo_photo, bg="#007B43")
-#     logo_label.pack(side=tk.LEFT, padx=10)
-# except FileNotFoundError:
-#     messagebox.showerror("Error", f"Gambar tidak ditemukan di lokasi {logo_image_path}. Pastikan gambar ada di folder 'images'.")
-# except Exception as e:
-#     messagebox.showerror("Error", f"Gagal memuat gambar: {str(e)}")
-
-
-# Menambahkan label judul aplikasi pada frame judul aplikasi
-title_label = tk.Label(title_frame, text="APLIKASI MANAJEMEN GPAIDIA", font=("Arial", 18, "bold"), bg="#007B43", fg="white")
-title_label.pack(side=tk.LEFT)
-
-# Frame untuk filter
-filter_frame = tk.Frame(root)
-filter_frame.pack(pady=10)
-
-tk.Label(filter_frame, text="Jenjang Sekolah:").grid(row=0, column=0)
-jenjang_var = tk.StringVar(value="Semua")
-jenjang_combobox = ttk.Combobox(filter_frame, textvariable=jenjang_var, values=["Semua", "SD", "SMP", "SMA", "SMK"])
-jenjang_combobox.grid(row=0, column=1)
-
-tk.Label(filter_frame, text="Sertifikasi:").grid(row=0, column=2)
-sertifikasi_var = tk.StringVar(value="Semua")
-sertifikasi_combobox = ttk.Combobox(filter_frame, textvariable=sertifikasi_var, values=["Semua", "Sudah", "Belum"])
-sertifikasi_combobox.grid(row=0, column=3)
-
-tk.Label(filter_frame, text="Status Pegawai:").grid(row=1, column=0)
-status_var = tk.StringVar(value="Semua")
-status_combobox = ttk.Combobox(filter_frame, textvariable=status_var, values=["Semua", "PNS", "NON PNS", "PPPK"])
-status_combobox.grid(row=1, column=1)
-
-tk.Label(filter_frame, text="Inpassing:").grid(row=1, column=2)
-inpassing_var = tk.StringVar(value="Semua")
-inpassing_combobox = ttk.Combobox(filter_frame, textvariable=inpassing_var, values=["Semua", "Sudah", "Belum"])
-inpassing_combobox.grid(row=1, column=3)
-
-# Dropdown filter untuk Jenis Kelamin
-tk.Label(filter_frame, text="Jenis Kelamin:").grid(row=2, column=0)
-jenisKelamin_var = tk.StringVar(value="Semua")
-jenisKelamin_combobox = ttk.Combobox(filter_frame, textvariable=jenisKelamin_var, values=["Semua", "L", "P"], state="normal")
-jenisKelamin_combobox.grid(row=2, column=1)
-jenisKelamin_combobox.bind("<<ComboboxSelected>>", filter_data)
-
-tk.Label(filter_frame, text="Pensiun:").grid(row=2, column=2)
-pensiun_var = tk.StringVar(value="Semua")
-pensiun_combobox = ttk.Combobox(filter_frame, textvariable=pensiun_var, values=["Semua", "Sudah", "Belum"])
-pensiun_combobox.grid(row=2, column=3)
-
-#untuk mencari data
-tk.Label(filter_frame, text="Cari:").grid(row=3, column=0)
-search_var = tk.StringVar()
-search_entry = tk.Entry(filter_frame, textvariable=search_var)
-search_entry.grid(row=3, column=1)
-
-# Binding event untuk setiap dropdown filter
-jenjang_combobox.bind("<<ComboboxSelected>>", filter_data)
-sertifikasi_combobox.bind("<<ComboboxSelected>>", filter_data)
-status_combobox.bind("<<ComboboxSelected>>", filter_data)
-inpassing_combobox.bind("<<ComboboxSelected>>", filter_data)
-jenisKelamin_combobox.bind("<<ComboboxSelected>>", filter_data)
-pensiun_combobox.bind("<<ComboboxSelected>>", filter_data)
-
-# Event Binding untuk kolom pencarian
-search_entry.bind("<KeyRelease>", on_search_change)
-
-# # Tombol untuk menyaring data
-# filter_button = tk.Button(filter_frame, text="Filter", command=filter_data)
-# filter_button.grid(row=3, column=2)
-
-# Membuat frame untuk tombol
-button_frame = tk.Frame(root, padx=10, pady=10)
-button_frame.pack(fill=tk.X)
-
-# Menambahkan tombol "Load File"
-load_button = ttk.Button(button_frame, text="Load File", command=load_file)
-load_button.pack(side=tk.LEFT, padx=5)
-
-# Menambahkan tombol "Save to Excel"
-save_button = ttk.Button(button_frame, text="Save to Excel", command=save_to_excel)
-save_button.pack(side=tk.LEFT, padx=5)
-
-# Menambahkan tombol "Refresh"
-refresh_button = ttk.Button(button_frame, text="Refresh", command=refresh_data)
-refresh_button.pack(side=tk.LEFT, padx=5)
-
-# Menambahkan tombol "Show Columns"
-show_columns_button = ttk.Button(button_frame, text="Show Columns", command=show_columns)
-show_columns_button.pack(side=tk.LEFT, padx=5)
-
-# Treeview untuk menampilkan data
-tree_frame = tk.Frame(root)
-tree_frame.pack(fill="both", expand=True)
-
-# Tambahkan scrollbar vertikal
-tree_scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical")
-tree_scrollbar_y.pack(side="right", fill="y")
-
-# Tambahkan scrollbar horizontal
-tree_scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal")
-tree_scrollbar_x.pack(side="bottom", fill="x")
-
-# Buat Treeview dengan scrollbar
-tree = ttk.Treeview(tree_frame, yscrollcommand=tree_scrollbar_y.set, xscrollcommand=tree_scrollbar_x.set)
-tree.pack(fill="both", expand=True)
-
-# Konfigurasi scrollbar
-tree_scrollbar_y.config(command=tree.yview)
-tree_scrollbar_x.config(command=tree.xview)
-
-# Menyimpan lebar asli kolom
-original_widths = {}
-
-# Membuat label informasi jumlah data
-info_label = ttk.Label(root, text="Jumlah PNS: 0, Jumlah NON PNS: 0, Jumlah PPPK: 0", font=("Arial", 12))
-info_label.pack(pady=10)
-
-# Membuat frame untuk elemen hak cipta dan tombol Desk
-footer_frame = tk.Frame(root, padx=10, pady=10)
-footer_frame.pack(side=tk.BOTTOM, fill=tk.X)
-
-# Menambahkan label hak cipta
-copyright_label = ttk.Label(footer_frame, text="© UINMA 2024 GPAIDIA. All rights reserved.", font=("Arial", 10))
-copyright_label.pack(side=tk.LEFT)
+    #fungsi untuk menghapus file
+    def delete_uploaded_file():
+    global uploaded_file_path
+    if uploaded_file_path and os.path.exists(uploaded_file_path):
+        confirm = messagebox.askyesno("Konfirmasi", f"Apakah Anda yakin ingin menghapus file:\n{uploaded_file_path}?")
+        if confirm:
+            try:
+                os.remove(uploaded_file_path)
+                messagebox.showinfo("Sukses", "File berhasil dihapus.")
+                uploaded_file_path = None
+                refresh_data()
+            except Exception as e:
+                messagebox.showerror("Error", f"Gagal menghapus file: {e}")
+    else:
+        messagebox.showwarning("Tidak ada file", "Belum ada file yang diunggah atau file sudah tidak ada.")
 
 def show_desk_info():
     # Membuat jendela baru
@@ -599,19 +504,311 @@ def show_tutorial_info():
     close_button = ttk.Button(tutorial_window, text="Tutup", command=tutorial_window.destroy)
     close_button.pack(pady=10)
 
+# Fungsi untuk memuat data secara asynchronous
+def load_data_async():
+    threading.Thread(target=load_data).start()
+
+# Fungsi untuk memproses data (dummy function)
+def load_data():
+    # Misalnya proses loading data yang berat
+    print("Memuat data...")
+
+# Inisialisasi tkinter
+root = tk.Tk()
+root.title("GPAIDIA")
+
+# Inisialisasi dictionary untuk menyimpan lebar asli kolom
+original_widths = {}
+
+# Tambahkan gaya ttk.Style
+style = ttk.Style(root)
+style.theme_use("clam")  
+style.configure("TButton", font=("Arial", 10), padding=10)
+style.configure("TLabel", font=("Arial", 10))
+style.configure("Treeview.Heading", font=("Arial", 10, "bold"), foreground="black")
+style.configure("Treeview", font=("Arial", 10), rowheight=25)
+
+# Style khusus untuk Combobox oranye
+style.configure("OrangeCombobox.TCombobox",
+                font=("Arial", 10),
+                fieldbackground="#C1A910",    # Warna oranye
+                background="#C1A910",           # Warna tombol panah
+                foreground="black")           # Warna teks
+
+style.map("OrangeCombobox.TCombobox",
+          fieldbackground=[('readonly', '#C1A910')],
+          background=[('active', 'white')])
+
+
+# Membuat frame sidebar untuk tombol di sebelah kiri
+sidebar_frame = tk.Frame(root, padx=10, pady=10, bg="#1F1F1F")  # Tambahkan warna latar jika perlu
+sidebar_frame.pack(side=tk.LEFT, fill=tk.Y)
+
+# === Frame Logo ===
+logo_frame = tk.Frame(sidebar_frame, bg="#1F1F1F")
+logo_frame.pack(pady=20)
+
+# Muat gambar logo
+logo_image = Image.open("images/kemenag.png")# Ganti nama file sesuai gambar kamu
+logo_image = logo_image.resize((40, 40))  # Ukuran disesuaikan
+logo_photo = ImageTk.PhotoImage(logo_image)
+
+# Label gambar
+logo_label = tk.Label(logo_frame, image=logo_photo, bg="#1F1F1F")
+logo_label.image = logo_photo  # Simpan referensi agar tidak garbage collected
+logo_label.pack(side=tk.LEFT)
+
+# Label teks di samping logo
+logo_text_frame = tk.Frame(logo_frame, bg="#1F1F1F", width=120)
+logo_text_frame.pack()
+
+line1 = tk.Frame(logo_text_frame, bg="#1F1F1F")
+line1.pack(anchor="w")
+tk.Label(line1, text="Kementerian", fg="white", bg="#1F1F1F", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
+
+line2 = tk.Frame(logo_text_frame, bg="#1F1F1F")
+line2.pack(anchor="w")
+tk.Label(line2, text="Agama", fg="white", bg="#1F1F1F", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
+tk.Label(line2, text="Kota", fg="#C1A910",bg="#1F1F1F", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
+
+line3 = tk.Frame(logo_text_frame, bg="#1F1F1F")
+line3.pack(anchor="w")
+tk.Label(line3, text="Malang", fg="#C1A910",bg="#1F1F1F", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
+
+# Style khusus untuk tombol sidebar
+style.configure("Sidebar.TButton",
+                background="#1F1F1F",       # warna orange
+                foreground="white",         # teks putih
+                borderwidth=0, 
+                font=("Arial", 10, "bold"),
+                anchor="w")
+
+style.map("Sidebar.TButton",
+          background=[('active', '#1F1F1F')],  # warna saat hover
+          foreground=[('active', 'white')])
+
+# Load ikon dan ubah ukurannya jadi 16x16 px
+icon_load = ImageTk.PhotoImage(Image.open("icons/load_icon.png").resize((16, 16)))
+icon_save = ImageTk.PhotoImage(Image.open("icons/save_icon.png").resize((16, 16)))
+icon_refresh = ImageTk.PhotoImage(Image.open("icons/refresh_icon.png").resize((16, 16)))
+icon_columns = ImageTk.PhotoImage(Image.open("icons/show_icon.png").resize((16, 16)))
+icon_tutorial = ImageTk.PhotoImage(Image.open("icons/tutor_icon.png").resize((16, 16)))
+icon_deskripsi = ImageTk.PhotoImage(Image.open("icons/desk_icon.png").resize((16, 16)))
+
+# Tombol "Load File"
+load_button = ttk.Button(sidebar_frame, text=" Load File", image=icon_load, compound="left", command=load_file, style="Sidebar.TButton")
+load_button.image = icon_load
+load_button.pack(anchor="w", pady=5, fill='x')
+
+# Tombol "Save to Excel"
+save_button = ttk.Button(sidebar_frame, text=" Save to Excel", image=icon_save, compound="left", command=save_to_excel, style="Sidebar.TButton")
+save_button.image = icon_save
+save_button.pack(anchor="w", pady=5, fill='x')
+
+# Tombol "Refresh"
+refresh_button = ttk.Button(sidebar_frame, text=" Refresh", image=icon_refresh, compound="left", command=refresh_data, style="Sidebar.TButton")
+refresh_button.image = icon_refresh
+refresh_button.pack(anchor="w", pady=5, fill='x')
+
+# Tombol "Show Columns"
+show_columns_button = ttk.Button(sidebar_frame, text=" Show Columns", image=icon_columns, compound="left", command=show_columns, style="Sidebar.TButton")
+show_columns_button.image = icon_columns
+show_columns_button.pack(anchor="w", pady=5, fill='x')
+
+# Frame untuk bagian bawah sidebar
+bottom_sidebar_frame = tk.Frame(sidebar_frame, bg="#1F1F1F")
+bottom_sidebar_frame.pack(side="bottom", fill="x", pady=10)
+
+#Tombol tutorial
+tutorial_button = ttk.Button(bottom_sidebar_frame, text=" Tutorial", image=icon_tutorial, compound="left", command=show_tutorial_info, style="Sidebar.TButton")
+tutorial_button.image = icon_tutorial
+tutorial_button.pack(anchor="w", pady=5, fill='x')
+
+#Tombol deskripsi
+deskripsi_button = ttk.Button(bottom_sidebar_frame, text="Deskripsi", image=icon_deskripsi, compound="left", command=show_desk_info, style="Sidebar.TButton")
+deskripsi_button.image = icon_deskripsi
+deskripsi_button.pack(anchor="w", pady=5, fill='x')
+
+# Membuat frame untuk judul aplikasi
+title_frame = tk.Frame(root, bg="#007B43", padx=10, pady=10)
+title_frame.pack(fill=tk.X)
+
+# # Menambahkan logo pada frame judul aplikasi
+# logo_image_path = "images/kemenag.png"  # Jalur relatif gambar
+# try:
+#     logo_image = Image.open(logo_image_path)  # Membuka gambar dari jalur relatif
+#     logo_image = logo_image.resize((100, 100), Image.LANCZOS)  # Menggunakan Image.LANCZOS untuk memperbesar gambar
+#     logo_photo = ImageTk.PhotoImage(logo_image)
+#     logo_label = tk.Label(title_frame, image=logo_photo, bg="#007B43")
+#     logo_label.pack(side=tk.LEFT, padx=10)
+# except FileNotFoundError:
+#     messagebox.showerror("Error", f"Gambar tidak ditemukan di lokasi {logo_image_path}. Pastikan gambar ada di folder 'images'.")
+# except Exception as e:
+#     messagebox.showerror("Error", f"Gagal memuat gambar: {str(e)}")
+
+
+# Menambahkan label judul aplikasi pada frame judul aplikasi
+title_label = tk.Label(title_frame, text="APLIKASI MANAJEMEN GPAIDIA", font=("Arial", 18, "bold"), bg="#007B43", fg="white")
+title_label.pack(side=tk.LEFT)
+
+# Frame utama untuk menampung filter dan info box secara horizontal
+top_frame = tk.Frame(root)
+top_frame.pack(fill="x", padx=10, pady=10)
+
+# Panel kiri: berisi judul + filter input (dalam 1 kolom)
+left_panel = tk.Frame(top_frame, width=400, bg="#f0f0f0")
+left_panel.pack(side="left", fill="y", padx=5)
+
+# Frame untuk judul filter (di dalam left_panel)
+judul_frame = tk.Frame(left_panel, bg="#f0f0f0")
+judul_frame.pack(fill="x")
+
+judul_label = tk.Label(judul_frame, 
+                       text="Filter Data", 
+                       font=("Arial", 14, "bold"), 
+                       bg="#f0f0f0", 
+                       fg="#333333")
+judul_label.pack(anchor="w", padx=5, pady=(0, 10))
+
+# Frame untuk filter input (di dalam left_panel)
+filter_frame = tk.Frame(left_panel, bg="#f0f0f0")
+filter_frame.pack(fill="both", expand=True)
+
+# Baris filter pertama
+tk.Label(filter_frame, text="Jenjang Sekolah:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+jenjang_var = tk.StringVar(value="Semua")
+jenjang_combobox = ttk.Combobox(filter_frame, textvariable=jenjang_var, values=["Semua", "SD", "SMP", "SMA", "SMK"], style="OrangeCombobox.TCombobox")
+jenjang_combobox.grid(row=0, column=1, padx=5, pady=2, sticky="w")
+
+tk.Label(filter_frame, text="Sertifikasi:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
+sertifikasi_var = tk.StringVar(value="Semua")
+sertifikasi_combobox = ttk.Combobox(filter_frame, textvariable=sertifikasi_var, values=["Semua", "Sudah", "Belum"], style="OrangeCombobox.TCombobox")
+sertifikasi_combobox.grid(row=0, column=3, padx=5, pady=2, sticky="w")
+
+# Baris kedua
+tk.Label(filter_frame, text="Status Pegawai:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+status_var = tk.StringVar(value="Semua")
+status_combobox = ttk.Combobox(filter_frame, textvariable=status_var, values=["Semua", "PNS", "NON PNS", "PPPK"], style="OrangeCombobox.TCombobox")
+status_combobox.grid(row=1, column=1, padx=5, pady=2, sticky="w")
+
+tk.Label(filter_frame, text="Inpassing:").grid(row=1, column=2, sticky="w", padx=5, pady=2)
+inpassing_var = tk.StringVar(value="Semua")
+inpassing_combobox = ttk.Combobox(filter_frame, textvariable=inpassing_var, values=["Semua", "Sudah", "Belum"], style="OrangeCombobox.TCombobox")
+inpassing_combobox.grid(row=1, column=3, padx=5, pady=2, sticky="w")
+
+# Baris ketiga
+tk.Label(filter_frame, text="Jenis Kelamin:").grid(row=2, column=0, sticky="w", padx=5, pady=2)
+jenisKelamin_var = tk.StringVar(value="Semua")
+jenisKelamin_combobox = ttk.Combobox(filter_frame, textvariable=jenisKelamin_var, values=["Semua", "L", "P"], style="OrangeCombobox.TCombobox", state="normal")
+jenisKelamin_combobox.grid(row=2, column=1, padx=5, pady=2, sticky="w")
+jenisKelamin_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+tk.Label(filter_frame, text="Pensiun:").grid(row=2, column=2, sticky="w", padx=5, pady=2)
+pensiun_var = tk.StringVar(value="Semua")
+pensiun_combobox = ttk.Combobox(filter_frame, textvariable=pensiun_var, values=["Semua", "Sudah", "Belum"], style="OrangeCombobox.TCombobox")
+pensiun_combobox.grid(row=2, column=3, padx=5, pady=2, sticky="w")
+
+# Panel kanan: berisi judul + info cards (dalam 1 kolom)
+right_panel = tk.Frame(top_frame, width=400, bg="#f0f0f0")
+right_panel.pack(side="right", fill="y", padx=5)
+
+# Frame untuk judul info (di dalam right_panel)
+judulinfo_frame = tk.Frame(right_panel, bg="#f0f0f0")
+judulinfo_frame.pack(fill="x")
+
+judulinfo_label = tk.Label(judulinfo_frame, 
+                           text="Hasil Filterisasi Data", 
+                           font=("Arial", 14, "bold"), 
+                           bg="#f0f0f0", 
+                           fg="#333333")
+judulinfo_label.pack(anchor="w", padx=5, pady=(0, 10))
+
+# Frame untuk info cards (di dalam right_panel, bukan top_frame langsung)
+info_frame = tk.Frame(right_panel, bg="#f0f0f0")
+info_frame.pack(fill="x", padx=5, pady=5)
+
+# --- Kartu Info: PNS ---
+card_pns = tk.Frame(info_frame, bg="#D6EAF8", bd=1, relief="solid", padx=10, pady=10)
+card_pns.pack(side=tk.LEFT, padx=5)
+tk.Label(card_pns, text="Jumlah PNS", font=("Arial", 10, "bold"), bg="#D6EAF8").pack(anchor="w")
+label_pns = tk.Label(card_pns, text="0", font=("Arial", 14, "bold"), bg="#D6EAF8", fg="#154360")
+label_pns.pack(anchor="w")
+
+# --- Kartu Info: NON PNS ---
+card_nonpns = tk.Frame(info_frame, bg="#FCF3CF", bd=1, relief="solid", padx=10, pady=10)
+card_nonpns.pack(side=tk.LEFT, padx=5)
+tk.Label(card_nonpns, text="Jumlah NON PNS", font=("Arial", 10, "bold"), bg="#FCF3CF").pack(anchor="w")
+label_nonpns = tk.Label(card_nonpns, text="0", font=("Arial", 14, "bold"), bg="#FCF3CF", fg="#7D6608")
+label_nonpns.pack(anchor="w")
+
+# --- Kartu Info: PPPK ---
+card_pppk = tk.Frame(info_frame, bg="#D5F5E3", bd=1, relief="solid", padx=10, pady=10)
+card_pppk.pack(side=tk.LEFT, padx=5)
+tk.Label(card_pppk, text="Jumlah PPPK", font=("Arial", 10, "bold"), bg="#D5F5E3").pack(anchor="w")
+label_pppk = tk.Label(card_pppk, text="0", font=("Arial", 14, "bold"), bg="#D5F5E3", fg="#1E8449")
+label_pppk.pack(anchor="w")
+
+# Membuat frame baru khusus untuk search bar (di luar filter_frame)
+cari_frame = tk.Frame(root, bg="#f0f0f0")  # gunakan 'root' sebagai parent, bukan filter_frame
+cari_frame.pack(pady=10, anchor="nw")  # gunakan pack atau grid sesuai layout utama
+
+# Label dan Entry search bar
+tk.Label(cari_frame, text="Cari:", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+search_var = tk.StringVar()
+search_entry = tk.Entry(cari_frame, textvariable=search_var, width=50)
+search_entry.pack(side=tk.LEFT, padx=5)
+
+# Binding event untuk setiap dropdown filter
+jenjang_combobox.bind("<<ComboboxSelected>>", filter_data)
+sertifikasi_combobox.bind("<<ComboboxSelected>>", filter_data)
+status_combobox.bind("<<ComboboxSelected>>", filter_data)
+inpassing_combobox.bind("<<ComboboxSelected>>", filter_data)
+jenisKelamin_combobox.bind("<<ComboboxSelected>>", filter_data)
+pensiun_combobox.bind("<<ComboboxSelected>>", filter_data)
+
+# Event Binding untuk kolom pencarian
+search_entry.bind("<KeyRelease>", on_search_change)
+
+# # Tombol untuk menyaring data
+# filter_button = tk.Button(filter_frame, text="Filter", command=filter_data)
+# filter_button.grid(row=3, column=2)
+
+# Treeview untuk menampilkan data
+tree_frame = tk.Frame(root)
+tree_frame.pack(fill="both", expand=True)
+
+# Tambahkan scrollbar vertikal
+tree_scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical")
+tree_scrollbar_y.pack(side="right", fill="y")
+
+# Tambahkan scrollbar horizontal
+tree_scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal")
+tree_scrollbar_x.pack(side="bottom", fill="x")
+
+# Buat Treeview dengan scrollbar
+tree = ttk.Treeview(tree_frame, yscrollcommand=tree_scrollbar_y.set, xscrollcommand=tree_scrollbar_x.set)
+tree.pack(fill="both", expand=True)
+
+# Konfigurasi scrollbar
+tree_scrollbar_y.config(command=tree.yview)
+tree_scrollbar_x.config(command=tree.xview)
+
+# Menyimpan lebar asli kolom
+original_widths = {}
+
+# Membuat frame untuk elemen hak cipta dan tombol Desk
+footer_frame = tk.Frame(root, padx=10, pady=10)
+footer_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+# Menambahkan label hak cipta
+copyright_label = ttk.Label(footer_frame, text="© UINMA 2024 GPAIDIA. All rights reserved.", font=("Arial", 10))
+copyright_label.pack(side=tk.LEFT)
+
 def show_welcome_message():
     messagebox.showinfo(
         "Selamat Datang",
         "Selamat datang di Aplikasi Manajemen GPAIDIA! Sebelum menggunakan aplikasi, dimohon untuk klik tombol Desk dan Tutorial. Jika sudah, bisa di-close."
     )
-
-# Menambahkan tombol "Desk"
-desk_button = ttk.Button(footer_frame, text="Desk", command=show_desk_info)
-desk_button.pack(side=tk.RIGHT)
-
-# Menambahkan tombol "Tutorial"
-tutorial_button = ttk.Button(footer_frame, text="Tutorial", command=show_tutorial_info)
-tutorial_button.pack(side=tk.RIGHT)
 
 # Menampilkan pesan selamat datang saat aplikasi pertama kali dijalankan
 show_welcome_message()
